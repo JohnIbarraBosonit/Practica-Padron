@@ -1,0 +1,65 @@
+set hive.cli.print.header=true;
+CREATE DATABASE IF NOT EXISTS datos_padron_text;
+USE datos_padron_text;
+SHOW TABLES;
+DROP TABLE IF EXISTS datos_padron_txt;
+CREATE TABLE datos_padron_txt(
+  COD_DISTRITO INT,
+  DESC_DISTRITO STRING,
+  COD_DIST_BARRIO INT,
+  DESC_BARRIO STRING,
+  COD_BARRIO INT,
+  COD_DIST_SECCION INT,
+  COD_SECCION INT,
+  COD_EDAD_INT INT,
+  EspanolesHombres INT,
+  EspanolesMujeres INT,
+  ExtranjerosHombres INT,
+  ExtranjerosMujeres INT
+ )
+ ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+ WITH SERDEPROPERTIES (
+   'separatorChar' = '\073',
+   'quoteChar' = '"',
+   'escapeChar' = '\\'
+   )
+ STORED AS TEXTFILE
+ tblproperties("skip.header.line.count"="1");
+
+LOAD DATA LOCAL INPATH '/home/cloudera/ejercicios/ejercicios_HIVE/padron.csv' INTO TABLE datos_padron_txt;
+
+CREATE TABLE IF NOT EXISTS datos_padrontxt AS
+SELECT COD_DISTRITO,
+DESC_DISTRITO,
+COD_DIST_BARRIO,
+DESC_BARRIO,
+COD_BARRIO,
+COD_DIST_SECCION,
+COD_SECCION,
+COD_EDAD_INT,
+(CASE WHEN espanoleshombres = "" then 0 else espanoleshombres end) as espanoleshombres,
+(CASE WHEN espanolesmujeres = "" then 0 else espanolesmujeres end) as espanolesmujeres,
+(CASE WHEN extranjeroshombres = "" then 0 else extranjeroshombres end) as extranjeroshombres,
+(CASE WHEN extranjerosmujeres = "" then 0 else extranjerosmujeres end) as extranjerosmujeres
+FROM datos_padron_txt;
+
+DROP TABLE IF EXISTS datos_padron_txt;
+
+CREATE TABLE IF NOT EXISTS datos_padron_txt2 AS
+SELECT CAST(TRIM(COD_DISTRITO) AS INT),
+DESC_DISTRITO,
+CAST(TRIM(COD_DIST_BARRIO) AS INT),
+DESC_BARRIO,
+CAST(TRIM(COD_BARRIO) AS INT),
+CAST(TRIM(COD_DIST_SECCION) AS INT),
+CAST(TRIM(COD_SECCION) AS INT),
+CAST(TRIM(COD_EDAD_INT) AS INT),
+CAST(TRIM(EspanolesHombres) AS INT),
+CAST(TRIM(EspanolesMujeres) AS INT),
+CAST(TRIM(ExtranjerosHombres) AS INT),
+CAST(TRIM(ExtranjerosMujeres) AS INT)
+FROM datos_padrontxt;
+
+CREATE TABLE X STORED AS PARQUET AS SELECT * FROM datos_padrontxt;
+
+SHOW CREATE TABLE <Nombre_tabla> //PARA SABER PROPIEDADES
