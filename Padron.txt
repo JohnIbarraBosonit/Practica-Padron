@@ -28,7 +28,7 @@ CREATE TABLE datos_padron_txt(
 
 LOAD DATA LOCAL INPATH '/home/cloudera/ejercicios/ejercicios_HIVE/padron.csv' INTO TABLE datos_padron_txt;
 
-CREATE TABLE IF NOT EXISTS datos_padrontxt AS
+CREATE TABLE IF NOT EXISTS datos_padron_sinComillas AS
 SELECT COD_DISTRITO,
 DESC_DISTRITO,
 COD_DIST_BARRIO,
@@ -45,21 +45,145 @@ FROM datos_padron_txt;
 
 DROP TABLE IF EXISTS datos_padron_txt;
 
-CREATE TABLE IF NOT EXISTS datos_padron_txt2 AS
-SELECT CAST(TRIM(COD_DISTRITO) AS INT),
+CREATE TABLE IF NOT EXISTS datos_padron_sinespacios AS
+SELECT CAST(TRIM(COD_DISTRITO) AS INT) AS COD_DISTRITO,
 DESC_DISTRITO,
-CAST(TRIM(COD_DIST_BARRIO) AS INT),
+CAST(TRIM(COD_DIST_BARRIO) AS INT) AS COD_DIST_BARRIO,
 DESC_BARRIO,
-CAST(TRIM(COD_BARRIO) AS INT),
-CAST(TRIM(COD_DIST_SECCION) AS INT),
-CAST(TRIM(COD_SECCION) AS INT),
-CAST(TRIM(COD_EDAD_INT) AS INT),
-CAST(TRIM(EspanolesHombres) AS INT),
-CAST(TRIM(EspanolesMujeres) AS INT),
-CAST(TRIM(ExtranjerosHombres) AS INT),
-CAST(TRIM(ExtranjerosMujeres) AS INT)
+CAST(TRIM(COD_BARRIO) AS INT) AS COD_BARRIO,
+CAST(TRIM(COD_DIST_SECCION) AS INT) AS COD_DIST_SECCION,
+CAST(TRIM(COD_SECCION) AS INT) AS COD_SECCION,
+CAST(TRIM(COD_EDAD_INT) AS INT) AS COD_EDAD_INT,
+CAST(TRIM(EspanolesHombres) AS INT) AS EspanolesHombres,
+CAST(TRIM(EspanolesMujeres) AS INT) AS EspanolesMujeres,
+CAST(TRIM(ExtranjerosHombres) AS INT) AS ExtranjerosHombres,
+CAST(TRIM(ExtranjerosMujeres) AS INT) AS ExtranjerosMujeres
 FROM datos_padrontxt;
 
-CREATE TABLE X STORED AS PARQUET AS SELECT * FROM datos_padrontxt;
+CREATE TABLE padron_parquet_sincomillas STORED AS PARQUET AS SELECT * FROM datos_padron_sincomillas;
+CREATE TABLE padron_parquet_sinespacios STORED AS PARQUET AS SELECT * FROM datos_padron_sinespacios;
 
-SHOW CREATE TABLE <Nombre_tabla> //PARA SABER PROPIEDADES
+SHOW CREATE TABLE padron_parquet_sinespacios
+
+SET hive.exec.dynamic.partition.mode=nonstrict;
+SET hive.exec.max.dynamic.partitions=100000;
+SET hive.exec.max.dynamic.partitions.pernode=100000;
+
+CREATE TABLE padron_particionado_sinespacios(
+DESC_DISTRITO STRING,
+COD_DIST_BARRIO INT,
+DESC_BARRIO STRING,
+COD_DIST_SECCION INT,
+COD_SECCION INT,
+COD_EDAD_INT INT,
+EspanolesHombres INT,
+EspanolesMujeres INT,
+ExtranjerosHombres INT,
+ExtranjerosMujeres INT)
+PARTITIONED BY(COD_DISTRITO INT, COD_BARRIO INT)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+WITH SERDEPROPERTIES (
+  'separatorChar' = '\073',
+  'quoteChar' = '"',
+  'escapeChar' = '\\')
+STORED AS PARQUET
+tblproperties("skip.header.line.count"="1");
+
+INSERT OVERWRITE TABLE padron_particionado_sinespacios PARTITION(COD_DISTRITO, COD_BARRIO)
+SELECT * FROM padron_parquet_sinespacios;
+
+IMPALA
+INVALIDATE METADATA;
+select cod_distrito, cod_barrio, SUM(espanoleshombres) AS TEH, SUM(espanolesmujeres) AS TEM, SUM(extranjeroshombres) AS TXH, SUM(extranjerosmujeres) AS TXM
+from                           
+padron_particionado_sinespacios
+where              
+cod_distrito = 1 OR
+cod_distrito = 10 OR
+cod_distrito = 5 OR
+cod_distrito = 6 OR
+cod_distrito = 19 OR
+cod_distrito = 21
+GROUP BY cod_distrito, cod_barrio
+ORDER BY cod_distrito, cod_barrio;
+
+//tiempo impala particionado = 0.27s;
+//tiempo hive   particionado = 37.717s;
+//tiempo impala parquet = 0.28s;
+
+select MAX(SUM(espanoleshombres)) OVER (PARTITION BY cod_distrito) AS MaxHombresESPDistrito,
+MIN(SUM(espanoleshombres)) OVER (PARTITION BY cod_distrito) AS MinHombresESPDistrito,
+MAX(SUM(espanolesmujeres)) OVER (PARTITION BY cod_distrito) AS MaxMujeresESPDistrito,
+MIN(SUM(espanolesmujeres)) OVER (PARTITION BY cod_distrito) AS MinMujeresESPDistrito,
+MAX(SUM(extranjeroshombres)) OVER (PARTITION BY cod_distrito) AS MaxHombresEXTPDistrito,
+MIN(SUM(extranjeroshombres)) OVER (PARTITION BY cod_distrito) AS MinHombresEXTPDistrito,
+MAX(SUM(extranjerosmujeres)) OVER (PARTITION BY cod_distrito) AS MaxMujeresEXTDistrito,
+Min(SUM(extranjerosmujeres)) OVER (PARTITION BY cod_distrito) AS MinMujeresEXTDistrito
+from padron_particionado_sinespacios
+GROUP BY cod_distrito
+ORDER BY cod_distrito limit 200;
+
+
+SELECT COD_DISTRITO,
+COD_BARRIO,
+sum(EspanolesHombres) as TotalESPH,
+sum(EspanolesMujeres) as TotalESPM,
+sum(ExtranjerosHombres) as TotalEXH,
+sum(ExtranjerosMujeres) as EXM
+FROM padron_particionado_sinespacios
+WHERE COD_DISTRITO IN (1, 5, 10, 19, 6, 21)
+GROUP BY COD_DISTRITO, COD_BARRIO ;
+
+
+SELECT COD_DISTRITO,
+COD_BARRIO,
+sum(EspanolesHombres) as TotalESPH,
+sum(EspanolesMujeres) as TotalESPM,
+sum(ExtranjerosHombres) as TotalEXH,
+sum(ExtranjerosMujeres) as EXM
+FROM padron_parquet_sinespacios
+WHERE COD_DISTRITO IN (1, 5, 10, 19, 6, 21)
+GROUP BY COD_DISTRITO, COD_BARRIO ;
+
+
+SELECT COD_DISTRITO,
+COD_BARRIO,
+sum(EspanolesHombres) as TotalESPH,
+sum(EspanolesMujeres) as TotalESPM,
+sum(ExtranjerosHombres) as TotalEXH,
+sum(ExtranjerosMujeres) as EXM
+FROM padron_particionado_sinespacios
+WHERE COD_DISTRITO IN (1, 5, 10, 19, 6, 21)
+GROUP BY COD_DISTRITO, COD_BARRIO ;
+
+//tiempos consultas en impala 3 tablas:
+//datos_padron_sinespacios		= 1.96s;
+//padron_parquet_sinespacios		= 0.16s;
+//padron_particionado_sinespacios = 0.27s;
+
+
+CREATE TABLE IF NOT EXISTS numeros_tbl(
+col1 INT,
+col2 INT,
+col3 INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+LINES TERMINATED BY '\n';
+
+CREATE EXTERNAL TABLE IF NOT EXISTS numeros_tbl(
+col1 INT,
+col2 INT,
+col3 INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+LINES TERMINATED BY '\n'
+STORED AS TEXTFILE
+LOCATION '/user/cloudera/test/datos1;
+
+//SALEN LOS 2 ARCHIVOS CARGADOS EN LA TABLA;
+// /user/hive/warehouse/numeros.db/numeros_tbl/datos1
+//CON EXTERNA Y CON LOCATION NO SE PIERDE EL DATOS1
+
+hdfs dfs -ls /user/hive/warehouse/numeros.db/numeros_tbl
